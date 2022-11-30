@@ -1,0 +1,23 @@
+{
+  "version": "2.0.0",
+  "tasks": [
+    {
+      "type": "npm",
+      "script": "dev",
+      "problemMatcher": [],
+      "label": "本地测试",
+      "detail": "cross-env NODE_ENV=development webpack-dev-server --config ./config/webpack.dev.js"
+    },
+    {
+      "type": "npm",
+      "script": "build",
+      "group": {
+        "kind": "build",
+        "isDefault": true
+      },
+      "problemMatcher": [],
+      "label": "构建发布",
+      "detail": "cross-env NODE_ENV=production webpack --config ./config/webpack.prod.js"
+    }
+  ]
+}

@@ -1,15 +1,15 @@
 import React from 'react'
-import ReactDOM from 'react-dom'
-import './index.css'
-import App from './app'
+import ReactDOM from 'react-dom/client'
+import App from '/App'
+import zhCN from 'antd/lib/locale-provider/zh_CN'
+import 'antd/dist/reset.css'
+import '/index.less'
+import { ConfigProvider } from 'antd'
 
-ReactDOM.render(
+ReactDOM.createRoot(document.getElementById('root') || document.body).render(
   <React.StrictMode>
-    <App />
-  </React.StrictMode>,
-  document.getElementById('root')
+    <ConfigProvider locale={zhCN}>
+      <App />
+    </ConfigProvider>
+  </React.StrictMode>
 )
-
-if (module && module.hot) {
-  module.hot.accept()
-}
