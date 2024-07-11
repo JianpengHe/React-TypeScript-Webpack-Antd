@@ -10,9 +10,9 @@ export const LongContent: React.FC<IProps> = ({}) => {
     manual: true,
     onSuccess() {
       setTrue()
-    }
+    },
   })
-  const onClick = useCallback(() => run('/'), [])
+  const onClick = useCallback(() => run('/'), [run])
 
   return (
     <div>

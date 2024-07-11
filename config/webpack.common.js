@@ -2,7 +2,6 @@ const path = require('path')
 const { PROJECT_PATH, isDev } = require('./constant')
 const HtmlWebpackPlugin = require('html-webpack-plugin')
 const CopyWebpackPlugin = require('copy-webpack-plugin')
-const MiniCssExtractPlugin = require('mini-css-extract-plugin')
 const WebpackBar = require('webpackbar')
 
 module.exports = {
@@ -24,7 +23,7 @@ module.exports = {
       {
         test: /\.css$/,
         use: [
-          isDev ? 'style-loader' : MiniCssExtractPlugin.loader,
+          'style-loader',
           {
             loader: 'css-loader',
             options: {

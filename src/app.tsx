@@ -4,6 +4,7 @@ import { UploadOutlined, UserOutlined, VideoCameraOutlined } from '@ant-design/i
 import { Layout, Menu } from 'antd'
 import { LongContent } from '/test/LongContent'
 import styled from 'styled-components'
+
 const { Header, Content, Sider } = Layout
 dayjs.locale('zh-cn')
 const Logo = styled.div`
@@ -32,7 +33,7 @@ const App: React.FC = () => (
         items={[UserOutlined, VideoCameraOutlined, UploadOutlined, UserOutlined].map((icon, index) => ({
           key: String(index + 1),
           icon: React.createElement(icon),
-          label: `nav ${index + 1}`
+          label: `nav ${index + 1}`,
         }))}
       />
     </Sider>
@@ -46,7 +47,7 @@ const App: React.FC = () => (
             const key = index + 1
             return {
               key,
-              label: `nav ${key}`
+              label: `nav ${key}`,
             }
           })}
         />
