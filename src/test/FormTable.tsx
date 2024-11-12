@@ -1,11 +1,13 @@
 import ProForm, { ProFormList, ProFormListProps } from '@ant-design/pro-form'
-import { EditableProTable, EditableProTableProps, ProColumns } from '@ant-design/pro-table'
+import ProTable, { ProColumns, ProTableProps } from '@ant-design/pro-table'
 import { Button, Form, FormInstance } from 'antd'
 import { NamePath } from 'antd/lib/form/interface'
 import React, { useEffect, useMemo } from 'react'
 import Field from '@ant-design/pro-field'
 import { InlineErrorFormItem } from '@ant-design/pro-utils'
 import styled from 'styled-components'
+import { PlusOutlined } from '@ant-design/icons'
+import { FormListProps } from 'antd/lib/form'
 
 const Styled = styled.div`
   td.ant-table-cell {
@@ -46,16 +48,20 @@ const Styled = styled.div`
   .ProFormItem {
     padding: 4px 0;
   }
+  /* .ProFormListItem:last-of-type {
+    min-height: 40px !important;
+  } */
 `
 type StringRecord = Record<string, any>
 
-export type FormTableColumn<T = any> = Omit<ProColumns<T>, 'children'> & {
+export type FormTableColumn<T = any> = Omit<ProColumns<T>, 'children' | 'dataIndex' | 'render'> & {
   formListProps?: Omit<ProFormListProps<any>, 'name'>
   children?: FormTableColumn<T>[]
   __parentFormLists?: FormTableColumn<T>[]
+  dataIndex: string
 }
 export type FormTableProps<DataType extends StringRecord = StringRecord> = Omit<
-  EditableProTableProps<DataType, never>,
+  ProTableProps<DataType, never>,
   | 'request'
   | 'params'
   | 'postData'
@@ -82,27 +88,25 @@ export type FormTableProps<DataType extends StringRecord = StringRecord> = Omit<
   | 'columns'
 > & {
   name: NamePath
-  rowKey: string
-  initialValue?: Partial<DataType>[]
   form?: FormInstance<any>
   columns: FormTableColumn<DataType>[]
-}
+} & Omit<FormListProps, 'children' | 'name'>
 const compositeName = (...namePaths: NamePath[]): NamePath =>
   namePaths.map(namePath => (Array.isArray(namePath) ? namePath : [namePath])).flat()
 
-function getHeight(columns: FormTableColumn[], dataObj: any) {
+function getHeight(columns: FormTableColumn[] | undefined, dataObj: any) {
   return (
     Math.max.apply(
       Math,
       (columns ?? []).map(({ dataIndex, children, formListProps }) => {
         const data = dataObj[dataIndex]
-        if (Array.isArray(data)) {
+        if (formListProps && Array.isArray(data)) {
           /** 判断是不是到最大限制了 */
           let hasAddBtn = data.length >= (formListProps?.max ?? Infinity) ? 0 : 1
           /** 不可以“增加一列” */
           if (!formListProps?.creatorRecord) hasAddBtn = 0
 
-          const total = data.reduce((n, item) => n + getHeight(children ?? [], item), 0) + hasAddBtn
+          const total: number = data.reduce((n, item) => n + getHeight(children, item), 0) + hasAddBtn
           return total
         }
         return 1
@@ -122,23 +126,24 @@ function deepCopy<T>(columns: T): T {
   return newColumns
 }
 function FormTable<DataType extends StringRecord = StringRecord>(props: FormTableProps<DataType>): JSX.Element {
-  const { name, initialValue, prefixCls, form, columns, ...otherProps } = props
+  const { name, initialValue, prefixCls, form, rules, columns, ...otherProps } = props
   const curForm = ProForm.useFormInstance()
   const formInstance = form || curForm
   const realColumns = useMemo(() => {
     const realColumns = deepCopy(columns)
-    const renderFormItem: FormTableColumn<DataType>['renderFormItem'] = function (schema: any, config) {
-      const { __parentFormLists, index, renderFormItem, ...othersColumn } = schema
+    const render: Required<ProColumns<DataType>>['render'] = function (dom, entity, index, action, schema) {
+      const { __parentFormLists, ...othersColumn } = schema as FormTableColumn<DataType>
       const [parentFormList, ...otherParentFormLists] = __parentFormLists || []
       if (!parentFormList) return <></>
-      const listNamePath = config ? compositeName(name, index, parentFormList.dataIndex) : parentFormList.dataIndex
+
+      const curEntity = entity?.[parentFormList.dataIndex]
+      const listNamePath = dom ? compositeName(index, parentFormList.dataIndex) : parentFormList.dataIndex
       /** children里面的第一个column，才会显示增删的操作按钮 */
       const isShowAction = !(parentFormList?.children?.[0]?.key !== schema.key)
 
       const { formListProps } = parentFormList
-
       const creatorButtonProps =
-        formListProps.creatorRecord === undefined
+        formListProps?.creatorRecord === undefined
           ? false
           : isShowAction
           ? formListProps?.creatorButtonProps ?? {
@@ -147,6 +152,7 @@ function FormTable<DataType extends StringRecord = StringRecord>(props: FormTabl
               style: { textAlign: 'left', justifyContent: 'flex-start', padding: 0 },
             }
           : false
+      // console.log(schema, listNamePath)
       return (
         <ProFormList
           {...formListProps}
@@ -163,21 +169,27 @@ function FormTable<DataType extends StringRecord = StringRecord>(props: FormTabl
             </div>
           )}
         >
-          {({ name }) => {
-            const entity = schema.entity?.[parentFormList.dataIndex]?.[name]
-            const minHeight = getHeight(parentFormList.children, entity) * 40 + 'px'
+          {(_, index) => {
+            const curValue = curEntity?.[index]
+            const minHeight = getHeight(parentFormList.children, curValue) * 40 + 'px'
+
             return (
-              <div className="ProFormListItem" style={{ minHeight }}>
+              <div key={index} className="ProFormListItem" style={{ minHeight }}>
                 {otherParentFormLists.length ? (
-                  renderFormItem({ ...schema, entity, index: name, __parentFormLists: otherParentFormLists }, false)
+                  <>
+                    {render(null, curValue, index, action, {
+                      ...schema,
+                      __parentFormLists: otherParentFormLists,
+                    } as any)}
+                  </>
                 ) : (
                   <InlineErrorFormItem
                     className="ProFormItem"
                     errorType="popover"
                     {...schema.formItemProps}
-                    name={compositeName(name, schema.dataIndex)}
+                    name={compositeName(index, schema.dataIndex)}
                   >
-                    <Field mode="edit" {...(othersColumn as any)}></Field>
+                    <Field mode="edit" {...(othersColumn as any)} />
                   </InlineErrorFormItem>
                 )}
               </div>
@@ -194,101 +206,48 @@ function FormTable<DataType extends StringRecord = StringRecord>(props: FormTabl
       ).join('.')
 
       if (!column.formListProps || !Array.isArray(column.children) || column.children.length === 0) return
-      column.children.forEach((item, index) => {
-        item.renderFormItem = renderFormItem
+      column.children.forEach((item: any, index) => {
+        item.render = render
         item.__parentFormLists = [...(column.__parentFormLists || []), column]
         dfs(item)
       })
     }
     realColumns.forEach(dfs)
     return realColumns
-  }, [columns, name])
+  }, [columns])
 
   const dataSource: DataType[] = Form.useWatch(name, formInstance)
+  const realDataSource = useMemo(() => dataSource?.map((obj, __index) => ({ ...obj, __index })), [dataSource])
   return (
     <Styled>
-      <EditableProTable
-        ghost
-        defaultSize="small"
-        pagination={false}
-        columns={realColumns}
-        bordered
-        name={name}
-        editable={{
-          type: 'multiple',
-          editableKeys: dataSource?.map((_, i) => i) ?? [],
+      <Form.List name={name} initialValue={initialValue} rules={rules} prefixCls={prefixCls}>
+        {(fields, { add, remove }) => {
+          // const dataSource = form.getFieldValue(name)
+          // console.log(fields, dataSource)
+          return (
+            <>
+              <ProTable
+                ghost
+                defaultSize="small"
+                search={false}
+                bordered={true}
+                pagination={false}
+                options={false}
+                dataSource={realDataSource}
+                columns={realColumns}
+                {...otherProps}
+                rowKey="__index"
+              />
+
+              <Button type="dashed" onClick={() => add()} block icon={<PlusOutlined />}>
+                Add sights
+              </Button>
+            </>
+          )
         }}
-        // recordCreatorProps={{
-        //   record(__index, dataSource) {
-        //     return { __index }
-        //   },
-        // }}
-        {...otherProps}
-      />
+      </Form.List>
     </Styled>
   )
-  // return (
-  //   <ProFormDependency name={[name]}>
-  //     {(obj, form) => {
-  //       const realDataSource = form.getFieldValue(name)?.map((obj, __index) => ({ __index, ...obj })) ?? []
-
-  //       console.log('realDataSource', realDataSource)
-  //       return (
-  //         <ProTable
-  //           rowKey="__index"
-  //           ghost
-  //           defaultSize="small"
-  //           search={false}
-  //           bordered={true}
-  //           pagination={false}
-  //           options={false}
-  //           dataSource={realDataSource}
-  //           columns={realColumns}
-  //           name={name}
-  //           editable={{
-  //             editableKeys: (realDataSource || []).map(({ __index }) => __index),
-  //           }}
-  //           {...otherProps}
-  //         />
-  //       )
-  //     }}
-  //   </ProFormDependency>
-  // )
-  // return (
-  //   <Styled>
-  //     <Form.List name={name} initialValue={initialValue} rules={rules} prefixCls={prefixCls}>
-  //       {(fields, { add, remove }) => {
-  //         // const dataSource = form.getFieldValue(name)
-  //         console.log(fields, dataSource)
-  //         return (
-  //           <>
-  //             <ProTable
-  //               rowKey="__index"
-  //               ghost
-  //               defaultSize="small"
-  //               search={false}
-  //               bordered={true}
-  //               pagination={false}
-  //               options={false}
-  //               dataSource={realDataSource}
-  //               columns={realColumns}
-  //               name={name}
-  //               // editable={{
-  //               //   editableKeys: (realDataSource || []).map(({ __index }) => __index),
-  //               // }}
-  //               {...otherProps}
-  //             />
-  //             <Form.Item>
-  //               <Button type="dashed" onClick={() => add()} block icon={<PlusOutlined />}>
-  //                 Add sights
-  //               </Button>
-  //             </Form.Item>
-  //           </>
-  //         )
-  //       }}
-  //     </Form.List>
-  //   </Styled>
-  // )
 }
 
 type FormData = any
@@ -309,12 +268,12 @@ const App: React.FC = () => {
             as: [
               { a: '南山', ss: [{ s: '粤海' }, { s: '蛇口' }] },
               { a: '宝安', ss: [{ s: '新安' }] },
-              { a: '福田', ss: [] },
+              { a: '福田', ss: [{ s: '下沙' }] },
             ],
           },
         ],
       },
-      { __index: 1, p: 'gx', cs: [{ c: '桂林', as: [{ a: '叠彩' }] }] },
+      { __index: 1, p: 'gx', cs: [{ c: '桂林', as: [{ a: '叠彩', ss: [] }] }] },
     ])
     // form.setFieldValue('c', '去root了')
   }, [form])
@@ -342,7 +301,7 @@ const App: React.FC = () => {
         title: '城市',
         dataIndex: 'cs',
         formListProps: {
-          creatorRecord: { c: '', as: [{ a: '' }] },
+          creatorRecord: { c: '', as: [{ a: '', ss: [{ s: '' }] }] },
           min: 1,
         },
         children: [
@@ -350,12 +309,20 @@ const App: React.FC = () => {
             title: '城市名称',
             dataIndex: 'c',
             valueType: 'text',
+            formItemProps: {
+              rules: [
+                {
+                  required: true,
+                  message: '此项是必填项',
+                },
+              ],
+            },
           },
           {
             title: '',
             dataIndex: 'as',
             formListProps: {
-              creatorRecord: { a: '' },
+              creatorRecord: { a: '', ss: [{ s: '' }] },
               min: 1,
               max: 3,
             },
@@ -407,51 +374,21 @@ const App: React.FC = () => {
           },
         ],
       },
-      // {
-      //   title: 't',
-      //   renderFormItem({ index }) {
-      //     return (
-      //       <ProFormList name={['list', index, 'cs']}>
-      //         {({ name }) => {
-      //           return (
-      //             <ProFormList name={'as'}>
-      //               <ProFormText></ProFormText>
-      //             </ProFormList>
-      //           )
-
-      //           renderFormItems.length ? (
-      //             renderFormItem({ ...item, index: name, __parentFormLists: renderFormItems }, false)
-      //           ) : (
-      //             <InlineErrorFormItem
-      //               errorType="popover"
-      //               {...item.formItemProps}
-      //               name={compositeName(name, item.dataIndex)}
-      //             >
-      //               <Field mode="edit" {...(otherItems as any)}></Field>
-      //             </InlineErrorFormItem>
-      //           )
-      //         }}
-      //       </ProFormList>
-      //     )
-      //   },
-      // },
     ]
 
     return data
   }, [])
   return (
-    <ProForm preserve={false} form={form} onFinish={a => console.log(a)}>
-      {/* <Form.Item name="p" hidden></Form.Item>
-      <Form.Item name="c" hidden></Form.Item>
-      <Form.Item name="a" hidden></Form.Item>
-      <ProFormList min={1} max={4} name={['list', 0, 'cs']} label="用户信息">
-        <ProFormText name="c" />
-      </ProFormList> */}
-      <FormTable columns={columns} name="list" rowKey="__index" />
-      {/* <Form.Item name="test" initialValue={[]}>
-        <div></div>
-      </Form.Item> */}
-      {/* <Form.Item name={}></Form.Item> */}
+    <ProForm form={form} onFinish={a => console.log(a)} submitter={false} scrollToFirstError>
+      <FormTable columns={columns} name="list" />
+
+      <Button
+        onClick={async () => {
+          console.log(await form.validateFields())
+        }}
+      >
+        验证
+      </Button>
 
       <Button htmlType="submit">提交</Button>
     </ProForm>
