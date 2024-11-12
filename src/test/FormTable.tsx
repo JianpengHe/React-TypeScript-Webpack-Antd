@@ -1,7 +1,6 @@
 import ProForm, { ProFormList, ProFormListProps } from '@ant-design/pro-form'
 import ProTable, { ProColumns, ProTableProps } from '@ant-design/pro-table'
 import { Button, Form, FormInstance } from 'antd'
-import { NamePath } from 'antd/lib/form/interface'
 import React, { useEffect, useMemo } from 'react'
 import Field from '@ant-design/pro-field'
 import { InlineErrorFormItem } from '@ant-design/pro-utils'
@@ -17,32 +16,36 @@ const Styled = styled.div`
     padding: 0 !important;
     border: none !important;
   }
-  .ProFormList {
+  .ant-form-item {
     margin: 0;
   }
-  .ProFormList .list-item {
+  .ant-form-item .list-item {
     display: flex;
     align-items: flex-start;
     min-height: 40px;
   }
-
-  .ProFormList .list-item .ant-pro-form-list-action {
-    margin: 4px 0;
+  .ant-form-item .list-item .ant-pro-form-list-action {
+    margin: 13px 0;
+    height: 14px;
   }
 
-  .ProFormList .list-item .ant-pro-form-list-action > .anticon {
+  .ant-form-item .list-item .ant-spin-container > .anticon,
+  .ant-form-item .list-item .ant-pro-form-list-action > .anticon {
     margin-left: 0;
     margin-right: 8px;
+    display: flex;
+    align-items: center;
+    height: 14px;
   }
-  .ProFormList .ant-form-item-control-input-content > div > button {
+  .ant-form-item .ant-form-item-control-input-content > div > button {
     height: 32px;
     margin: 0 0 8px 0;
   }
-  .ProFormList .ant-form-item {
+  .ant-form-item {
     margin: 0;
     margin-block: 0 !important;
   }
-  .ProFormList .ant-pro-form-list-container {
+  .ant-form-item .ant-pro-form-list-container {
     width: 100%;
   }
   .ProFormItem {
@@ -53,14 +56,15 @@ const Styled = styled.div`
   } */
 `
 type StringRecord = Record<string, any>
+type NamePath = string | number | Array<string | number>
 
-export type FormTableColumn<T = any> = Omit<ProColumns<T>, 'children' | 'dataIndex' | 'render'> & {
-  formListProps?: Omit<ProFormListProps<any>, 'name'>
-  children?: FormTableColumn<T>[]
-  __parentFormLists?: FormTableColumn<T>[]
+export type FormTableProColumn<T = any> = Omit<ProColumns<T>, 'children' | 'dataIndex'> & {
+  formListProps?: Omit<ProFormListProps<any>, 'children' | 'name' | 'min' | 'max'> & { max?: number; min?: number }
+  children?: FormTableProColumn<T>[]
+  __parentFormLists?: FormTableProColumn<T>[]
   dataIndex: string
 }
-export type FormTableProps<DataType extends StringRecord = StringRecord> = Omit<
+export type FormTableProProps<DataType extends StringRecord = StringRecord> = Omit<
   ProTableProps<DataType, never>,
   | 'request'
   | 'params'
@@ -89,12 +93,12 @@ export type FormTableProps<DataType extends StringRecord = StringRecord> = Omit<
 > & {
   name: NamePath
   form?: FormInstance<any>
-  columns: FormTableColumn<DataType>[]
+  columns: FormTableProColumn<DataType>[]
 } & Omit<FormListProps, 'children' | 'name'>
-const compositeName = (...namePaths: NamePath[]): NamePath =>
+const compositeName = (...namePaths: NamePath[]): Array<string | number> =>
   namePaths.map(namePath => (Array.isArray(namePath) ? namePath : [namePath])).flat()
 
-function getHeight(columns: FormTableColumn[] | undefined, dataObj: any) {
+function getHeight(columns: FormTableProColumn[] | undefined, dataObj: any) {
   return (
     Math.max.apply(
       Math,
@@ -125,14 +129,14 @@ function deepCopy<T>(columns: T): T {
   }
   return newColumns
 }
-function FormTable<DataType extends StringRecord = StringRecord>(props: FormTableProps<DataType>): JSX.Element {
+function FormTablePro<DataType extends StringRecord = StringRecord>(props: FormTableProProps<DataType>): JSX.Element {
   const { name, initialValue, prefixCls, form, rules, columns, ...otherProps } = props
   const curForm = ProForm.useFormInstance()
   const formInstance = form || curForm
   const realColumns = useMemo(() => {
     const realColumns = deepCopy(columns)
     const render: Required<ProColumns<DataType>>['render'] = function (dom, entity, index, action, schema) {
-      const { __parentFormLists, ...othersColumn } = schema as FormTableColumn<DataType>
+      const { __parentFormLists, ...othersColumn } = schema as FormTableProColumn<DataType>
       const [parentFormList, ...otherParentFormLists] = __parentFormLists || []
       if (!parentFormList) return <></>
 
@@ -157,7 +161,6 @@ function FormTable<DataType extends StringRecord = StringRecord>(props: FormTabl
         <ProFormList
           {...formListProps}
           name={listNamePath}
-          className="ProFormList"
           deleteIconProps={isShowAction ? formListProps?.deleteIconProps : false}
           /** 默认不展示复制按钮 */
           copyIconProps={isShowAction ? formListProps?.copyIconProps ?? false : false}
@@ -187,7 +190,7 @@ function FormTable<DataType extends StringRecord = StringRecord>(props: FormTabl
                     className="ProFormItem"
                     errorType="popover"
                     {...schema.formItemProps}
-                    name={compositeName(index, schema.dataIndex)}
+                    name={compositeName(index, String(schema.dataIndex))}
                   >
                     <Field mode="edit" {...(othersColumn as any)} />
                   </InlineErrorFormItem>
@@ -199,7 +202,7 @@ function FormTable<DataType extends StringRecord = StringRecord>(props: FormTabl
       )
     }
     /** 给每个column加上renderFormItem和__parentFormLists */
-    const dfs = (column: FormTableColumn<DataType>) => {
+    const dfs = (column: FormTableProColumn<DataType>) => {
       column.key = compositeName(
         (column.__parentFormLists || []).map(({ dataIndex }) => dataIndex),
         column.dataIndex
@@ -250,7 +253,20 @@ function FormTable<DataType extends StringRecord = StringRecord>(props: FormTabl
   )
 }
 
-type FormData = any
+type FormData = {
+  list: {
+    p: string
+    cs?: {
+      c: string
+      as?: {
+        a: string
+        ss?: {
+          s: string
+        }[]
+      }[]
+    }[]
+  }[]
+}
 const App: React.FC = () => {
   const [form] = ProForm.useForm<FormData>()
 
@@ -259,7 +275,6 @@ const App: React.FC = () => {
     console.log('set')
     form.setFieldValue('list', [
       {
-        __index: 0,
         p: 'gd',
         cs: [
           { c: '广州', as: [{ a: '天河', ss: [{ s: '石牌桥' }, { s: '五山' }] }] },
@@ -273,13 +288,11 @@ const App: React.FC = () => {
           },
         ],
       },
-      { __index: 1, p: 'gx', cs: [{ c: '桂林', as: [{ a: '叠彩', ss: [] }] }] },
+      { p: 'gx', cs: [{ c: '桂林', as: [{ a: '叠彩', ss: [] }] }] },
     ])
-    // form.setFieldValue('c', '去root了')
   }, [form])
   const columns = useMemo(() => {
-    const data: FormTableColumn<{}>[] = [
-      { dataIndex: '__index', hideInTable: true },
+    const data: FormTableProColumn<FormData['list'][0]>[] = [
       {
         title: '省份名称',
         dataIndex: 'p',
@@ -379,8 +392,8 @@ const App: React.FC = () => {
     return data
   }, [])
   return (
-    <ProForm form={form} onFinish={a => console.log(a)} submitter={false} scrollToFirstError>
-      <FormTable columns={columns} name="list" />
+    <ProForm form={form} onFinish={async a => console.log(a)} submitter={false} scrollToFirstError>
+      <FormTablePro columns={columns} name="list" />
 
       <Button
         onClick={async () => {
