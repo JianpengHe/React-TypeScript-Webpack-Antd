@@ -1,7 +1,7 @@
 import ProForm, { ProFormList, ProFormListProps, ProFormText } from '@ant-design/pro-form'
 import ProTable, { ProColumns, ProTableProps } from '@ant-design/pro-table'
-import { Button, Empty, Form, FormInstance, FormListOperation, Input, Space } from 'antd'
-import React, { FC, useEffect, useMemo } from 'react'
+import { Button, Empty, Form, FormInstance, FormListOperation, Input, Space, Spin } from 'antd'
+import React, { FC, isValidElement, useEffect, useMemo } from 'react'
 import Field, { ProFieldPropsType } from '@ant-design/pro-field'
 import { InlineErrorFormItem, ProFieldValueType } from '@ant-design/pro-utils'
 import styled from 'styled-components'
@@ -92,17 +92,25 @@ const Styled = styled.div`
 `
 type StringRecord = Record<string, any>
 type NamePath = string | number | Array<string | number>
-
+type IFormListProps = Omit<ProFormListProps<any>, 'children' | 'name' | 'min' | 'max'> & {
+  max?: number
+  min?: number
+  loading?: boolean
+}
 export type FormTableProColumn<T = any> = Omit<ProColumns<T>, 'children' | 'dataIndex' | 'valueType'> & {
-  formListProps?: Omit<ProFormListProps<any>, 'children' | 'name' | 'min' | 'max'> & {
-    max?: number
-    min?: number
-  }
+  formListProps?: IFormListProps | ((form: FormInstance<any> | undefined, entity: any) => IFormListProps)
   children?: FormTableProColumn<T>[]
   __parentFormLists?: string[]
   dataIndex: string
   mode?: ProFieldPropsType['mode']
-  formListFieldRender?(dom: React.ReactNode, entity: any, column: FormTableProColumn<T>): React.ReactNode
+  formListFieldRender?(
+    dom: React.ReactNode,
+    entity: any,
+    column: FormTableProColumn<T>,
+    index: number,
+    form: FormInstance<any>,
+    parentEntity?: any
+  ): React.ReactNode
   valueType?: ProFieldValueType | 'operation' | 'none'
 }
 export type FormTableProProps<DataType extends StringRecord = StringRecord> = Omit<
@@ -142,19 +150,27 @@ export type FormTableProProps<DataType extends StringRecord = StringRecord> = Om
 const compositeName = (...namePaths: NamePath[]): Array<string | number> =>
   namePaths.map(namePath => (Array.isArray(namePath) ? namePath : [namePath])).flat()
 
-function getHeight(columns: FormTableProColumn[] | undefined, dataObj: any) {
+function getHeight(
+  columns: FormTableProColumn[] | undefined,
+  dataObj: any,
+  formInstance: FormInstance<any> | undefined
+) {
   return (
     Math.max.apply(
       Math,
-      (columns ?? []).map(({ dataIndex, children, formListProps }) => {
+      (columns ?? []).map(column => {
+        let { dataIndex, children, formListProps } = column
         const data = dataObj?.[dataIndex]
         if (formListProps && Array.isArray(data)) {
+          if (typeof formListProps === 'function') {
+            formListProps = formListProps(formInstance, { ...column, entity: dataObj })
+          }
           /** 判断是不是到最大限制了 */
           let hasAddBtn = data.length >= (formListProps?.max ?? Infinity) ? 0 : 1
           /** 不可以“增加一列” */
           if (!formListProps?.creatorRecord) hasAddBtn = 0
 
-          const total: number = data.reduce((n, item) => n + getHeight(children, item), 0) + hasAddBtn
+          const total: number = data.reduce((n, item) => n + getHeight(children, item, formInstance), 0) + hasAddBtn
           return total
         }
         return 1
@@ -163,7 +179,7 @@ function getHeight(columns: FormTableProColumn[] | undefined, dataObj: any) {
   )
 }
 function deepCopy<T>(columns: T): T {
-  if (!columns || typeof columns !== 'object') return columns
+  if (!columns || typeof columns !== 'object' || isValidElement(columns)) return columns
   if (Array.isArray(columns)) {
     return columns.map(deepCopy) as any
   }
@@ -178,20 +194,47 @@ function InlineErrorField<DataType extends StringRecord = StringRecord>(props: {
   column: FormTableProColumn<DataType>
   index: number
   entity: any
-  form: FormInstance
+  formInstance: FormInstance
+  parentEntity?: any
 }) {
-  const { index, column, entity, form } = props
-  const { render, renderFormItem, formListFieldRender: formListItemRender, formItemProps, ...otherColumn } = column
+  const { index, column, entity, formInstance, parentEntity } = props
+  let { render, renderFormItem, formListFieldRender, formItemProps, fieldProps, ...otherColumn } = column
   const name = compositeName(index, String(column.dataIndex))
+
+  if (typeof fieldProps === 'function') {
+    // @ts-ignore
+    fieldProps = fieldProps(formInstance, {
+      ...otherColumn,
+      entity,
+      index,
+      // @ts-ignore
+      parentEntity,
+    })
+  }
+
+  // @ts-ignore
+  otherColumn.fieldProps = {
+    ...fieldProps,
+    /** 限制输入组件只能32px */
+    style: { height: '32px', ...((fieldProps as any)?.style ?? {}) },
+  }
+
   const dom: React.ReactNode = <Field mode="edit" {...(otherColumn as any)} />
   return (
     <InlineErrorFormItem
       className="ProFormItem"
       errorType="popover"
-      {...(typeof formItemProps === 'function' ? formItemProps(form, { entity, ...column } as any) : formItemProps)}
+      {...(typeof formItemProps === 'function'
+        ? formItemProps(formInstance, {
+            ...otherColumn,
+            entity,
+            index,
+            parentEntity,
+          } as any)
+        : formItemProps)}
       name={name}
     >
-      {formListItemRender?.(dom, entity, otherColumn) ?? dom}
+      {formListFieldRender?.(dom, entity, otherColumn, index, formInstance, parentEntity) ?? dom}
     </InlineErrorFormItem>
   )
 }
@@ -215,7 +258,10 @@ function FormTablePro<DataType extends StringRecord = StringRecord>(
       /** children里面的第一个column，才会显示增删的操作按钮 */
       const isShowAction = !(parentFormList?.children?.[0]?.key !== othersColumn.key)
 
-      const { formListProps } = parentFormList
+      let { formListProps } = parentFormList
+      if (typeof formListProps === 'function') {
+        formListProps = formListProps(formInstance, { ...schema, entity })
+      }
       const creatorButtonProps: any =
         formListProps?.creatorRecord === undefined
           ? false
@@ -229,39 +275,47 @@ function FormTablePro<DataType extends StringRecord = StringRecord>(
             }
           : false
       return (
-        <ProFormList
-          {...formListProps}
-          name={listNamePath}
-          deleteIconProps={isShowAction ? formListProps?.deleteIconProps : false}
-          /** 默认不展示复制按钮 */
-          copyIconProps={isShowAction ? formListProps?.copyIconProps ?? false : false}
-          creatorButtonProps={creatorButtonProps}
-          itemRender={dom => (
-            <div className="list-item">
-              {dom.action}
-              {dom.listDom}
-            </div>
-          )}
-        >
-          {(_, index) => {
-            const curValue = curEntity?.[index]
-            const minHeight = getHeight(parentFormList.children, curValue) * 40 + 'px'
-            return (
-              <div key={index} className="ProFormListItem" style={{ minHeight }}>
-                {otherParentFormLists.length ? (
-                  <>
-                    {render(null, curValue, index, action, {
-                      ...othersColumn,
-                      __parentFormLists: otherParentFormLists,
-                    } as any)}
-                  </>
-                ) : (
-                  <InlineErrorField column={othersColumn} index={index} entity={curValue} form={formInstance} />
-                )}
+        <Spin spinning={Boolean(formListProps?.loading)}>
+          <ProFormList
+            {...formListProps}
+            name={listNamePath}
+            deleteIconProps={isShowAction ? formListProps?.deleteIconProps : false}
+            /** 默认不展示复制按钮 */
+            copyIconProps={isShowAction ? formListProps?.copyIconProps ?? false : false}
+            creatorButtonProps={creatorButtonProps}
+            itemRender={dom => (
+              <div className="list-item">
+                {dom.action}
+                {dom.listDom}
               </div>
-            )
-          }}
-        </ProFormList>
+            )}
+          >
+            {(_, index) => {
+              const curValue = curEntity?.[index]
+              const minHeight = getHeight(parentFormList.children, curValue, formInstance) * 40 + 'px'
+              return (
+                <div key={index} className="ProFormListItem" style={{ minHeight }}>
+                  {otherParentFormLists.length ? (
+                    <>
+                      {render(null, curValue, index, action, {
+                        ...othersColumn,
+                        __parentFormLists: otherParentFormLists,
+                      } as any)}
+                    </>
+                  ) : (
+                    <InlineErrorField
+                      column={othersColumn}
+                      index={index}
+                      entity={curValue}
+                      formInstance={formInstance}
+                      parentEntity={entity}
+                    />
+                  )}
+                </div>
+              )
+            }}
+          </ProFormList>
+        </Spin>
       )
     }
     /** 给每个column加上renderFormItem和__parentFormLists */
@@ -280,16 +334,10 @@ function FormTablePro<DataType extends StringRecord = StringRecord>(
       column.key = compositeName(column.__parentFormLists || [], column.dataIndex).join('.')
       columnMap.set(column.key, column)
 
-      /** 限制输入组件只能32px */
-      column.fieldProps = {
-        ...column.fieldProps,
-        style: { height: '32px', ...((column.fieldProps as any)?.style ?? {}) },
-      }
-
       if (!column.formListProps || !Array.isArray(column.children) || column.children.length === 0) {
         if (!column.render)
           column.render = (dom, entity, index) => (
-            <InlineErrorField column={column} index={index} entity={entity} form={formInstance} />
+            <InlineErrorField column={column} index={index} entity={entity} formInstance={formInstance} />
           )
 
         return
@@ -325,8 +373,6 @@ function FormTablePro<DataType extends StringRecord = StringRecord>(
     <Styled>
       <Form.List name={name} initialValue={initialValue} rules={rules} prefixCls={prefixCls}>
         {() => {
-          // const dataSource = form.getFieldValue(name)
-          // console.log(fields, dataSource)
           return (
             <ProTable
               ghost
