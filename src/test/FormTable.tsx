@@ -153,7 +153,8 @@ const compositeName = (...namePaths: NamePath[]): Array<string | number> =>
 function getHeight(
   columns: FormTableProColumn[] | undefined,
   dataObj: any,
-  formInstance: FormInstance<any> | undefined
+  formInstance: FormInstance<any> | undefined,
+  entry: any
 ) {
   return (
     Math.max.apply(
@@ -163,14 +164,15 @@ function getHeight(
         const data = dataObj?.[dataIndex]
         if (formListProps && Array.isArray(data)) {
           if (typeof formListProps === 'function') {
-            formListProps = formListProps(formInstance, { ...column, entity: dataObj })
+            formListProps = formListProps(formInstance, { ...column, entity: dataObj, entry })
           }
           /** 判断是不是到最大限制了 */
           let hasAddBtn = data.length >= (formListProps?.max ?? Infinity) ? 0 : 1
           /** 不可以“增加一列” */
           if (!formListProps?.creatorRecord) hasAddBtn = 0
 
-          const total: number = data.reduce((n, item) => n + getHeight(children, item, formInstance), 0) + hasAddBtn
+          const total: number =
+            data.reduce((n, item) => n + getHeight(children, item, formInstance, entry), 0) + hasAddBtn
           return total
         }
         return 1
@@ -196,8 +198,9 @@ function InlineErrorField<DataType extends StringRecord = StringRecord>(props: {
   entity: any
   formInstance: FormInstance
   parentEntity?: any
+  entry?: any
 }) {
-  const { index, column, entity, formInstance, parentEntity } = props
+  const { index, column, entity, formInstance, parentEntity, entry } = props
   let { render, renderFormItem, formListFieldRender, formItemProps, fieldProps, ...otherColumn } = column
   const name = compositeName(index, String(column.dataIndex))
 
@@ -207,9 +210,9 @@ function InlineErrorField<DataType extends StringRecord = StringRecord>(props: {
       ...otherColumn,
       entity,
       index,
-      // @ts-ignore
+      entry,
       parentEntity,
-    })
+    } as any)
   }
 
   // @ts-ignore
@@ -228,6 +231,7 @@ function InlineErrorField<DataType extends StringRecord = StringRecord>(props: {
         ? formItemProps(formInstance, {
             ...otherColumn,
             entity,
+            entry,
             index,
             parentEntity,
           } as any)
@@ -248,7 +252,15 @@ function FormTablePro<DataType extends StringRecord = StringRecord>(
   const realColumns = useMemo(() => {
     const realColumns = deepCopy(columns)
     const columnMap = new Map<string, FormTableProColumn<DataType>>()
-    const render: Required<ProColumns<DataType>>['render'] = function (dom, entity, index, action, schema) {
+    // @ts-ignore
+    const render: Required<ProColumns<DataType>>['render'] = function (
+      dom,
+      entity,
+      index,
+      action,
+      schema,
+      entry = entity
+    ) {
       const { __parentFormLists, ...othersColumn } = schema as FormTableProColumn<DataType>
       const [parentFormListKey, ...otherParentFormLists] = __parentFormLists || []
       if (!parentFormListKey) return <></>
@@ -260,7 +272,7 @@ function FormTablePro<DataType extends StringRecord = StringRecord>(
 
       let { formListProps } = parentFormList
       if (typeof formListProps === 'function') {
-        formListProps = formListProps(formInstance, { ...schema, entity })
+        formListProps = formListProps(formInstance, { ...schema, entry, entity })
       }
       const creatorButtonProps: any =
         formListProps?.creatorRecord === undefined
@@ -292,15 +304,23 @@ function FormTablePro<DataType extends StringRecord = StringRecord>(
           >
             {(_, index) => {
               const curValue = curEntity?.[index]
-              const minHeight = getHeight(parentFormList.children, curValue, formInstance) * 40 + 'px'
+              const minHeight = getHeight(parentFormList.children, curValue, formInstance, entry) * 40 + 'px'
               return (
                 <div key={index} className="ProFormListItem" style={{ minHeight }}>
                   {otherParentFormLists.length ? (
                     <>
-                      {render(null, curValue, index, action, {
-                        ...othersColumn,
-                        __parentFormLists: otherParentFormLists,
-                      } as any)}
+                      {render(
+                        null,
+                        curValue,
+                        index,
+                        action,
+                        {
+                          ...othersColumn,
+                          __parentFormLists: otherParentFormLists,
+                        } as any,
+                        // @ts-ignore
+                        entry
+                      )}
                     </>
                   ) : (
                     <InlineErrorField
@@ -309,6 +329,7 @@ function FormTablePro<DataType extends StringRecord = StringRecord>(
                       entity={curValue}
                       formInstance={formInstance}
                       parentEntity={entity}
+                      entry={entry}
                     />
                   )}
                 </div>
