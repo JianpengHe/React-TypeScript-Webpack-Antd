@@ -2,6 +2,7 @@ const path = require('path')
 const { PROJECT_PATH, isDev } = require('./constant')
 const HtmlWebpackPlugin = require('html-webpack-plugin')
 const CopyWebpackPlugin = require('copy-webpack-plugin')
+const TerserWebpackPlugin = require('terser-webpack-plugin')
 const WebpackBar = require('webpackbar')
 
 module.exports = {
@@ -61,6 +62,10 @@ module.exports = {
     alias: {
       '': path.resolve(PROJECT_PATH, './src'),
     },
+  },
+  optimization: {
+    minimize: !isDev,
+    minimizer: [new TerserWebpackPlugin({ extractComments: false })],
   },
   plugins: [
     new HtmlWebpackPlugin({

@@ -7,9 +7,9 @@ import '/index.less'
 import { ConfigProvider } from 'antd'
 
 ReactDOM.createRoot(document.getElementById('root') || document.body).render(
-  <React.StrictMode>
-    <ConfigProvider locale={zhCN}>
-      <App />
-    </ConfigProvider>
-  </React.StrictMode>
+  // <React.StrictMode>
+  <ConfigProvider locale={zhCN}>
+    <App />
+  </ConfigProvider>
+  // </React.StrictMode>
 )

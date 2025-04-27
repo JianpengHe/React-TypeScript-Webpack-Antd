@@ -9,6 +9,7 @@ import { FormListProps } from 'antd/lib/form'
 import { MinusCircleOutlined, PlusCircleOutlined } from '@ant-design/icons'
 
 const Styled = styled.div`
+  width: 100%;
   > .ant-pro-table > .ant-pro-card {
     box-shadow: none;
   }
